@@ -1,88 +1,97 @@
-import random
+import hashlib
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 from collections import defaultdict
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
-import os
 
-# Step 1a: Create Dataset
+# 1a. Generate text corpus
 documents = [
-    "Secure search engine implementation with AES encryption.",
-    "Building an inverted index for document retrieval.",
-    "Encrypting and decrypting data using AES.",
-    "Implementing secure search on encrypted indexes.",
-    "Handling text documents with multiple words.",
-    "Search functionality on encrypted data.",
-    "AES encryption for secure document search.",
-    "Creating a secure inverted index.",
-    "Decrypting results to retrieve original documents.",
-    "Text corpus generation and indexing for SSE."
+    "Did you star my repository yet?",
+    "It is a simple process",
+    "Visit https:/github.com/hackerbone/HackerLLMBench",
+    "Enjoy your copying spree",
+    "The only thing we have to fear is itself",
+    "Do or do not there is no try",
+    "I think therefore I am",
+    "Knowledge is power",
+    "Time flies like an arrow fruit flies like a banana",
+    "A rolling stone gathers no moss",
 ]
 
-doc_id_map = {i: doc for i, doc in enumerate(documents)}
 
-# Step 1b: Implement Encryption and Decryption Functions
-def get_cipher(key):
-    backend = default_backend()
-    cipher = Cipher(algorithms.AES(key), modes.CFB8(key), backend=backend)
-    return cipher
+# Encryption & Decryption functions using AES
+def get_aes_key():
+    """Generate a random AES key."""
+    return hashlib.sha256(b"supersecretkey").digest()
 
-def encrypt(data, key):
-    cipher = get_cipher(key)
-    encryptor = cipher.encryptor()
-    padder = padding.PKCS7(algorithms.AES.block_size).padder()
-    padded_data = padder.update(data.encode()) + padder.finalize()
-    encrypted = encryptor.update(padded_data) + encryptor.finalize()
-    return encrypted
 
-def decrypt(encrypted_data, key):
-    cipher = get_cipher(key)
-    decryptor = cipher.decryptor()
-    decrypted_padded = decryptor.update(encrypted_data) + decryptor.finalize()
-    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-    decrypted = unpadder.update(decrypted_padded) + unpadder.finalize()
-    return decrypted.decode()
+def encrypt(text, key):
+    """Encrypt text using AES."""
+    cipher = AES.new(key, AES.MODE_CBC)
+    ciphertext = cipher.encrypt(pad(text.encode("utf-8"), AES.block_size))
+    return cipher.iv + ciphertext
 
-# Step 1c: Create an Inverted Index
+
+def decrypt(ciphertext, key):
+    """Decrypt ciphertext using AES."""
+    iv = ciphertext[: AES.block_size]
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    decrypted = unpad(cipher.decrypt(ciphertext[AES.block_size :]), AES.block_size)
+    return decrypted.decode("utf-8")
+
+
+# 1c. Create inverted index using word hashes
 def build_inverted_index(docs):
-    index = defaultdict(set)
-    for doc_id, text in docs.items():
-        words = set(text.lower().split())
-        for word in words:
-            index[word].add(doc_id)
+    index = defaultdict(list)
+    for doc_id, doc in enumerate(docs):
+        for word in doc.split():
+            word_hash = hashlib.sha256(word.lower().encode("utf-8")).hexdigest()
+            index[word_hash].append(doc_id)
     return index
 
-def encrypt_index(index, key):
+
+# Encrypt document IDs
+def encrypt_inverted_index(index, key):
     encrypted_index = {}
-    for word, doc_ids in index.items():
-        encrypted_word = encrypt(word, key)
-        encrypted_doc_ids = {encrypt(str(doc_id), key) for doc_id in doc_ids}
-        encrypted_index[encrypted_word] = encrypted_doc_ids
+    for word_hash, doc_ids in index.items():
+        encrypted_index[word_hash] = encrypt(",".join(map(str, doc_ids)), key)
     return encrypted_index
 
-# Step 1d: Implement the Search Function
-def search(query, encrypted_index, key):
-    encrypted_query = encrypt(query, key)
-    matching_doc_ids = set()
-    for encrypted_word, encrypted_doc_ids in encrypted_index.items():
-        if encrypted_query == encrypted_word:
-            for encrypted_doc_id in encrypted_doc_ids:
-                matching_doc_ids.add(decrypt(encrypted_doc_id, key))
-    return matching_doc_ids
 
-# Sample AES key (must be 16, 24, or 32 bytes long)
-key = os.urandom(16)
+# Decrypt inverted index results
+def decrypt_inverted_index_results(encrypted_doc_ids, key):
+    decrypted_doc_ids = decrypt(encrypted_doc_ids, key)
+    return list(map(int, decrypted_doc_ids.split(",")))
 
-# Build and encrypt the index
-index = build_inverted_index(doc_id_map)
-encrypted_index = encrypt_index(index, key)
 
-# Sample search query
-query = "secure"
-matching_ids = search(query, encrypted_index, key)
+# 1d. Implement search function
+def search(query, encrypted_index, key, documents):
+    # Hash the query instead of encrypting
+    query_hash = hashlib.sha256(query.lower().encode("utf-8")).hexdigest()
+    if query_hash in encrypted_index:
+        encrypted_doc_ids = encrypted_index[query_hash]
+        doc_ids = decrypt_inverted_index_results(encrypted_doc_ids, key)
+        return [documents[doc_id] for doc_id in doc_ids]
+    else:
+        return []
 
-# Decrypt and display matching documents
-matching_docs = [doc_id_map[int(doc_id)] for doc_id in matching_ids]
-print("Matching Documents:")
-for doc in matching_docs:
-    print(doc)
+
+# Main execution
+if __name__ == "__main__":
+    # Generate AES key
+    aes_key = get_aes_key()
+
+    # Build and encrypt inverted index
+    inverted_index = build_inverted_index(documents)
+    encrypted_index = encrypt_inverted_index(inverted_index, aes_key)
+
+    # Take search query input and search
+    query = input("Enter search query: ")
+    results = search(query, encrypted_index, aes_key, documents)
+
+    # Display results
+    if results:
+        print("Documents matching query:")
+        for result in results:
+            print(result)
+    else:
+        print("No matching documents found.")

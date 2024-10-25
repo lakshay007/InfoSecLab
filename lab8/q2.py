@@ -1,104 +1,84 @@
-import random
-import sympy
+import hashlib
+from phe import paillier
 from collections import defaultdict
 
-
-class Paillier:
-    def __init__(self, key_size=512):
-        self.key_size = key_size
-        self.public_key, self.private_key = self.generate_keypair()
-
-    def generate_keypair(self):
-        p = self._generate_prime()
-        q = self._generate_prime()
-        n = p * q
-        g = n + 1
-        lambda_n = (p - 1) * (q - 1)
-        mu = sympy.mod_inverse(lambda_n, n)
-        public_key = (n, g)
-        private_key = (lambda_n, mu)
-        return public_key, private_key
-
-    def _generate_prime(self):
-        return sympy.nextprime(random.getrandbits(self.key_size // 2))
-
-    def encrypt(self, plaintext):
-        n, g = self.public_key
-        r = random.randint(1, n - 1)
-        ciphertext = (pow(g, plaintext, n**2) * pow(r, n, n**2)) % (n**2)
-        return ciphertext
-
-    def decrypt(self, ciphertext):
-        n, g = self.public_key
-        lambda_n, mu = self.private_key
-        x = pow(ciphertext, lambda_n, n**2) - 1
-        l = x // n
-        plaintext = (l * mu) % n
-        return plaintext
-
-# Convert string to integer
-def string_to_int(s):
-    return int.from_bytes(s.encode(), 'big')
-
-# Convert integer to string
-def int_to_string(i):
-    length = (i.bit_length() + 7) // 8
-    return i.to_bytes(length, 'big').decode()
-
-# Step 2a: Create Dataset
+# 2a. Generate text corpus
 documents = [
-    "Secure search engine implementation using Paillier encryption.",
-    "Building an inverted index for document retrieval.",
-    "Encrypting and decrypting data with Paillier cryptosystem.",
-    "Implementing secure search on encrypted indexes.",
-    "Handling text documents with multiple words.",
-    "Search functionality on encrypted data.",
-    "Paillier encryption for secure document search.",
-    "Creating a secure encrypted index.",
-    "Decrypting results to retrieve original documents.",
-    "Text corpus generation and indexing for PKSE."
+    "Did you star my repository yet?",
+    "It is a simple process",
+    "Visit https:/github.com/hackerbone/HackerLLMBench",
+    "Enjoy your copying spree",
+    "The only thing we have to fear is fear itself",
+    "Do or do not there is no try",
+    "I think therefore I am",
+    "Knowledge is power",
+    "Time flies like an arrow fruit flies like a banana",
+    "A rolling stone gathers no moss",
 ]
 
-doc_id_map = {i: doc for i, doc in enumerate(documents)}
+# 2b. Paillier Encryption and Decryption functions
+# Generate Paillier keypair (public and private keys)
+public_key, private_key = paillier.generate_paillier_keypair()
 
-# Step 2c: Create an Encrypted Index
+
+def word_to_hash(word):
+    """Convert a word to a hash representation using SHA-256."""
+    return hashlib.sha256(word.encode("utf-8")).hexdigest()
+
+
+def encrypt_ids(doc_ids, pub_key):
+    """Encrypt document IDs using Paillier encryption."""
+    return [pub_key.encrypt(doc_id) for doc_id in doc_ids]
+
+
+def decrypt_ids(encrypted_doc_ids, priv_key):
+    """Decrypt encrypted document IDs using Paillier decryption."""
+    return [priv_key.decrypt(enc_id) for enc_id in encrypted_doc_ids]
+
+
+# 2c. Create inverted index
 def build_inverted_index(docs):
-    index = defaultdict(set)
-    for doc_id, text in docs.items():
-        words = set(text.lower().split())
-        for word in words:
-            index[word].add(doc_id)
+    index = defaultdict(list)
+    for doc_id, doc in enumerate(docs):
+        for word in doc.split():
+            index[word_to_hash(word.lower())].append(doc_id)
     return index
 
-def encrypt_index(index, paillier):
+
+# Encrypt the document IDs in the inverted index
+def encrypt_inverted_index(index, pub_key):
     encrypted_index = {}
-    for word, doc_ids in index.items():
-        encrypted_word = paillier.encrypt(string_to_int(word))
-        encrypted_doc_ids = {paillier.encrypt(doc_id) for doc_id in doc_ids}
-        encrypted_index[encrypted_word] = encrypted_doc_ids
+    for word_hash, doc_ids in index.items():
+        encrypted_index[word_hash] = encrypt_ids(doc_ids, pub_key)
     return encrypted_index
 
-# Create Paillier instance and build encrypted index
-paillier = Paillier(key_size=512)
-index = build_inverted_index(doc_id_map)
-encrypted_index = encrypt_index(index, paillier)
+
+# 2d. Implement search function
+def search(query, encrypted_index, priv_key, documents):
+    query_hash = word_to_hash(query.lower())
+
+    if query_hash in encrypted_index:
+        encrypted_doc_ids = encrypted_index[query_hash]
+        doc_ids = decrypt_ids(encrypted_doc_ids, priv_key)
+        return [documents[doc_id] for doc_id in doc_ids]
+    else:
+        return []
 
 
-def search(query, encrypted_index, paillier):
-    encrypted_query = paillier.encrypt(string_to_int(query))
-    matching_doc_ids = set()
-    for encrypted_word, encrypted_doc_ids in encrypted_index.items():
-        if encrypted_query == encrypted_word:
-            for encrypted_doc_id in encrypted_doc_ids:
-                matching_doc_ids.add(paillier.decrypt(encrypted_doc_id))
-    return matching_doc_ids
+# Main execution
+if __name__ == "__main__":
+    # Build and encrypt inverted index
+    inverted_index = build_inverted_index(documents)
+    encrypted_index = encrypt_inverted_index(inverted_index, public_key)
 
-# Sample search query
-query = "secure"
-matching_ids = search(query, encrypted_index, paillier)
+    # Take search query input
+    query = input("Enter search query: ")
+    results = search(query, encrypted_index, private_key, documents)
 
-
-matching_docs = [doc_id_map[int(doc_id)] for doc_id in matching_ids]
-print("Matching Documents:")
-for doc in matching_docs:
-    print(doc)
+    # Display results
+    if results:
+        print("Documents matching query:")
+        for result in results:
+            print(result)
+    else:
+        print("No matching documents found.")

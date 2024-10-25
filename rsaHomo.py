@@ -1,7 +1,6 @@
 from Crypto.PublicKey import RSA
-from Crypto.Random import get_random_bytes
-from Crypto.Util.number import bytes_to_long, long_to_bytes, inverse
-import math
+from Crypto.Util.number import bytes_to_long, long_to_bytes
+import hashlib
 
 # Step 1: Generate RSA key pair
 def generate_rsa_keys(bits=1024):
@@ -24,6 +23,12 @@ def rsa_decrypt(private_key, ciphertext):
 def rsa_homomorphic_multiplication(cipher1, cipher2, n):
     # Multiply ciphertexts: c1 * c2 mod n
     return (cipher1 * cipher2) % n
+
+# Step 5: Generate SHA-512 digest using hashlib
+def generate_sha512_digest(data):
+    hash_obj = hashlib.sha512()
+    hash_obj.update(data)
+    return hash_obj.hexdigest()
 
 # Example workflow
 def main():
@@ -63,6 +68,11 @@ def main():
         print("Success! The decrypted result matches the original multiplication.")
     else:
         print("Error! The decrypted result does not match the original multiplication.")
+
+    # SHA-512 digest of the encrypted result
+    encrypted_data_bytes = long_to_bytes(encrypted_result)
+    digest = generate_sha512_digest(encrypted_data_bytes)
+    print("SHA-512 Digest of the encrypted result:", digest)
 
 if __name__ == "__main__":
     main()
